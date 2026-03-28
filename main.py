@@ -3,7 +3,7 @@ import re
 from telegram import *
 from telegram.ext import *
 
-# ================= CONFIG =================
+# ========= CONFIG =========
 BOT_TOKEN = "8547944263:AAEcZGBWImZyOWCWj9L0qIuKW1BM0OEN9ZM"
 API_URL = "http://147.135.212.197/crapi/st/viewstats"
 API_TOKEN = "RFdUREJBUzR9T4dVc49ndmFra1NYV5CIhpGVcnaOYmqHhJZXfYGJSQ=="
@@ -18,13 +18,14 @@ CHANNELS = [
     "@HematOTP"
 ]
 
-# ================= STORAGE =================
+# ========= STORAGE =========
 users = {}
 referrals = {}
 groups = []
 sent = set()
+used_codes = {}
 
-# ================= JOIN CHECK =================
+# ========= JOIN CHECK =========
 def is_joined(bot, uid):
     for ch in CHANNELS:
         try:
@@ -35,25 +36,31 @@ def is_joined(bot, uid):
             return False
     return True
 
-# ================= START =================
+# ========= START =========
 def start(update, context):
     uid = update.effective_user.id
 
     if context.args:
-        ref = int(context.args[0])
-        if ref != uid:
-            referrals.setdefault(ref, [])
-            if uid not in referrals[ref]:
-                referrals[ref].append(uid)
+        try:
+            ref = int(context.args[0])
+            if ref != uid:
+                referrals.setdefault(ref, [])
+                if uid not in referrals[ref]:
+                    referrals[ref].append(uid)
+        except:
+            pass
 
-    users.setdefault(uid, {})
+    users[uid] = True
 
-    kb = [[InlineKeyboardButton(ch, url=f"https://t.me/{ch[1:]}")] for ch in CHANNELS]
-    kb.append([InlineKeyboardButton("✅ چیک", callback_data="check")])
+    buttons = [[InlineKeyboardButton(ch, url=f"https://t.me/{ch[1:]}")] for ch in CHANNELS]
+    buttons.append([InlineKeyboardButton("✅ چیک", callback_data="check")])
 
-    update.message.reply_text("🔒 چینلونو کې ګډون وکړئ:", reply_markup=InlineKeyboardMarkup(kb))
+    update.message.reply_text(
+        "🔒 لطفاً چینلونه Join کړئ:",
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
 
-# ================= MENU =================
+# ========= MENU =========
 def menu():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📱 نمبرونه", callback_data="numbers")],
@@ -61,7 +68,7 @@ def menu():
         [InlineKeyboardButton("👤 زما حساب", callback_data="account")]
     ])
 
-# ================= CHECK =================
+# ========= CHECK =========
 def check(update, context):
     q = update.callback_query
     uid = q.from_user.id
@@ -69,9 +76,9 @@ def check(update, context):
     if is_joined(context.bot, uid):
         q.edit_message_text("✅ ښه راغلاست:", reply_markup=menu())
     else:
-        q.answer("❌ Join وکړئ!", show_alert=True)
+        q.answer("❌ ټول چینلونه Join کړئ!", show_alert=True)
 
-# ================= ACCOUNT =================
+# ========= ACCOUNT =========
 def account(update, context):
     q = update.callback_query
     uid = q.from_user.id
@@ -80,24 +87,24 @@ def account(update, context):
     link = f"https://t.me/{context.bot.username}?start={uid}"
 
     q.edit_message_text(
-        f"👤 حساب\n\n👥 ریفیرل: {count}/10\n\n🔗 لینک:\n{link}",
+        f"👤 حساب\n\n👥 Referral: {count}/10\n\n🔗 لینک:\n{link}",
         reply_markup=menu()
     )
 
-# ================= NUMBERS =================
+# ========= NUMBERS =========
 def numbers(update, context):
     q = update.callback_query
     uid = q.from_user.id
 
     if len(referrals.get(uid, [])) < 10:
-        q.answer("❗ 10 ریفیرل پکار دی!", show_alert=True)
+        q.answer("❗ 10 Referral پکار دي!", show_alert=True)
         return
 
     q.edit_message_text("⏳ نمبرونه درته راځي...", reply_markup=menu())
 
-# ================= GROUP =================
+# ========= GROUP =========
 def addg(update, context):
-    update.callback_query.message.reply_text("ګروپ username راولیږئ:")
+    update.callback_query.message.reply_text("📩 د ګروف username راولیږئ:")
     return 1
 
 def saveg(update, context):
@@ -105,7 +112,7 @@ def saveg(update, context):
     group = update.message.text
 
     if len(referrals.get(uid, [])) < 10:
-        update.message.reply_text("❗ 10 ریفیرل نشته!")
+        update.message.reply_text("❌ 10 Referral نشته!")
         return ConversationHandler.END
 
     try:
@@ -113,15 +120,33 @@ def saveg(update, context):
         if m.status == "administrator":
             groups.append(group)
             referrals[uid] = referrals[uid][10:]
-            update.message.reply_text("✅ ګروپ ثبت شو (10 ریفیرل کم شول)")
+            update.message.reply_text("✅ ګروف ثبت شو (10 Referral کم شول)")
         else:
-            update.message.reply_text("❌ بوت ادمین نه دی")
-    except:
-        update.message.reply_text("❌ غلط ګروپ")
+            update.message.reply_text("❌ Bot admin نه دی")
+    except Exception as e:
+        update.message.reply_text(f"ERROR: {e}")
 
     return ConversationHandler.END
 
-# ================= FETCH =================
+# ========= GIFT CODE =========
+def gift(update, context):
+    uid = update.message.from_user.id
+    text = update.message.text.strip().upper()
+
+    if text == "NNJJK":
+        if used_codes.get(uid):
+            update.message.reply_text("❌ دا کوډ مخکې کارول شوی!")
+            return
+
+        used_codes[uid] = True
+        referrals.setdefault(uid, [])
+
+        for i in range(20):
+            referrals[uid].append(f"gift_{i}_{uid}")
+
+        update.message.reply_text("🎁 20 Referral درته اضافه شول ✅")
+
+# ========= FETCH =========
 def fetch():
     try:
         r = requests.get(API_URL, params={"token": API_TOKEN}, timeout=10)
@@ -129,47 +154,40 @@ def fetch():
     except:
         return []
 
-# ================= USER MSG =================
+# ========= USER MSG =========
 def user_msg(phone, time):
-    return f"""╭━━━〔 💬 نـوی نـمـبـر سـیـسـټـم 〕━━━╮
-┃
-┃  💀 نمبر ➤ 【 {phone[-6:]} 】
-┃  ☠ مکمل نمبر ➤ 【 {phone} 】
-┃  ⏳ وخت ➤ 【 {time} 】
-┃
-┣━━━━━━━━━━━━━━━━━━━━━━━┫
-┃  ⚡ زر استفاده وکړئ
-┃  🚫 ناوخته مه کوئ
+    return f"""╭━━━〔 💬 نوی نمبر سیستم 〕━━━╮
+┃ 💀 نمبر ➤ {phone[-6:]}
+┃ ☠ مکمل ➤ {phone}
+┃ ⏳ وخت ➤ {time}
 ╰━━━━━━━━━━━━━━━━━━━━━━━╯"""
 
-# ================= GROUP MSG =================
+# ========= GROUP MSG =========
 def group_msg(app, phone, msg, time):
     otp = "N/A"
     m = re.search(r"\d{4,8}", msg)
     if m:
         otp = m.group()
 
-    return f"""_______________________________
-نوی کود راورسیده 📲
-💠خدمات نوم: {app}
-🌏هیواد: --
-🎭نمبر کوډ: --
-🎫نمبر: {phone}
-🎯وخت: {time}
-OTPکوډ: {otp}
-مکمل پیغام⭐️:
-{msg}
-_______________________________"""
+    return f"""📲 OTP NEW
 
-# ================= JOB =================
+Service: {app}
+Number: {phone}
+Time: {time}
+OTP: {otp}
+
+{msg}
+"""
+
+# ========= JOB =========
 def job(context):
     data = fetch()
 
     for i in data:
-        app = i[0]
-        phone = i[1]
-        msg = i[2]
-        time = i[3]
+        try:
+            app, phone, msg, time = i
+        except:
+            continue
 
         if phone in sent:
             continue
@@ -181,33 +199,19 @@ def job(context):
             ref = len(referrals.get(uid, []))
 
             if ref < 10:
-                context.bot.send_message(uid, "📢 نوی نمبر جوړ شو خو تاسو شرط نه لرئ")
+                context.bot.send_message(uid, "📢 نوی نمبر راغی خو شرط نشته")
                 continue
 
-            context.bot.send_message(
-                uid,
-                user_msg(phone, time),
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔑 کوډ دلته", url="https://t.me/HematOTP")],
-                    [InlineKeyboardButton("📢 معلومات", url="https://t.me/ProTech43")]
-                ])
-            )
+            context.bot.send_message(uid, user_msg(phone, time))
 
         # GROUPS
         for g in groups:
-            context.bot.send_message(
-                g,
-                group_msg(app, phone, msg, time),
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📢 زموږ چینل", url="https://t.me/ProTech43")],
-                    [InlineKeyboardButton("📲 نمبرونه", url="https://t.me/HematOtp1VBot")]
-                ])
-            )
+            context.bot.send_message(g, group_msg(app, phone, msg, time))
 
         # ADMIN
         context.bot.send_message(ADMIN_ID, f"📊 NEW NUMBER: {phone}")
 
-# ================= ADMIN =================
+# ========= ADMIN =========
 def admin(update, context):
     if update.effective_user.id != ADMIN_ID:
         return
@@ -216,7 +220,7 @@ def admin(update, context):
         f"👑 ADMIN PANEL\nUsers: {len(users)}\nGroups: {len(groups)}"
     )
 
-# ================= MAIN =================
+# ========= MAIN =========
 def main():
     up = Updater(BOT_TOKEN, use_context=True)
     dp = up.dispatcher
@@ -234,6 +238,7 @@ def main():
     dp.add_handler(CallbackQueryHandler(numbers, pattern="numbers"))
     dp.add_handler(CallbackQueryHandler(account, pattern="account"))
 
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, gift))
     dp.add_handler(conv)
 
     up.job_queue.run_repeating(job, interval=10, first=5)
