@@ -1,259 +1,289 @@
 import requests
+import time
+from datetime import datetime
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 import re
-from telegram import *
-from telegram.ext import *
 
-================= CONFIG =================
-
-BOT_TOKEN = "8628239633:AAG0SNJDxLzVrA6-tnb9hvA-HlwrqQ8NCtk"
+# ---------------- CONFIG ----------------
 API_URL = "http://147.135.212.197/crapi/st/viewstats"
-API_TOKEN = "RFdUREJBUzR9T4dVc49ndmFra1NYV5CIhpGVcnaOYmqHhJZXfYGJSQ=="
-ADMIN_ID = 1316375131
+TOKEN = "RFdUREJBUzR9T4dVc49ndmFra1NYV5CIhpGVcnaOYmqHhJZXfYGJSQ=="
+params = {"token": TOKEN, "records": ""}
 
-CHANNELS = [
-"@ProTech43",
-"@WahidModeX",
-"@HematTech",
-"@Javeed_TECH",
-"@SQ_BotZ",
-"@HematOTP"
-]
+TELEGRAM_BOT_TOKEN = "8628239633:AAG0SNJDxLzVrA6-tnb9hvA-HlwrqQ8NCtk"
+TELEGRAM_GROUP_ID = -1003807754294
 
-================= STORAGE =================
+bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
-users = {}
-referrals = {}
-groups = []
-sent = set()
+# ---------------- FUNCTIONS ----------------
 
-================= JOIN CHECK =================
+def escape_v2(text):
+    chars = r'_*[]()~`>#+-=|{}.!'
+    return ''.join(['\\' + c if c in chars else c for c in str(text)])
 
-def is_joined(bot, uid):
-for ch in CHANNELS:
-try:
-m = bot.get_chat_member(ch, uid)
-if m.status not in ["member", "administrator", "creator"]:
-return False
-except:
-return False
-return True
+def fetch_sms():
+    try:
+        r = requests.get(API_URL, params=params, timeout=20)
+        r.raise_for_status()
+        data = r.json()
+        return data if isinstance(data, list) else []
+    except Exception as e:
+        print("API ERROR:", e)
+        return []
 
-================= START =================
+def parse_time(t):
+    try:
+        return datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
+    except:
+        return None
 
-def start(update, context):
-uid = update.effective_user.id
+# ---------------- FULL COUNTRY MAP ----------------
 
-# referral  
-if context.args:  
-    ref = int(context.args[0])  
-    if ref != uid:  
-        referrals.setdefault(ref, [])  
-        if uid not in referrals[ref]:  
-            referrals[ref].append(uid)  
+country_map = {
+    "1": ("United States", "🇺🇸"),
+    "7": ("Russia", "🇷🇺"),
+    "20": ("Egypt", "🇪🇬"),
+    "27": ("South Africa", "🇿🇦"),
+    "30": ("Greece", "🇬🇷"),
+    "31": ("Netherlands", "🇳🇱"),
+    "32": ("Belgium", "🇧🇪"),
+    "33": ("France", "🇫🇷"),
+    "34": ("Spain", "🇪🇸"),
+    "36": ("Hungary", "🇭🇺"),
+    "39": ("Italy", "🇮🇹"),
+    "40": ("Romania", "🇷🇴"),
+    "41": ("Switzerland", "🇨🇭"),
+    "43": ("Austria", "🇦🇹"),
+    "44": ("United Kingdom", "🇬🇧"),
+    "45": ("Denmark", "🇩🇰"),
+    "46": ("Sweden", "🇸🇪"),
+    "47": ("Norway", "🇳🇴"),
+    "48": ("Poland", "🇵🇱"),
+    "49": ("Germany", "🇩🇪"),
+    "51": ("Peru", "🇵🇪"),
+    "52": ("Mexico", "🇲🇽"),
+    "53": ("Cuba", "🇨🇺"),
+    "54": ("Argentina", "🇦🇷"),
+    "55": ("Brazil", "🇧🇷"),
+    "56": ("Chile", "🇨🇱"),
+    "57": ("Colombia", "🇨🇴"),
+    "58": ("Venezuela", "🇻🇪"),
+    "60": ("Malaysia", "🇲🇾"),
+    "61": ("Australia", "🇦🇺"),
+    "62": ("Indonesia", "🇮🇩"),
+    "63": ("Philippines", "🇵🇭"),
+    "64": ("New Zealand", "🇳🇿"),
+    "65": ("Singapore", "🇸🇬"),
+    "66": ("Thailand", "🇹🇭"),
+    "81": ("Japan", "🇯🇵"),
+    "82": ("South Korea", "🇰🇷"),
+    "84": ("Vietnam", "🇻🇳"),
+    "86": ("China", "🇨🇳"),
+    "91": ("India", "🇮🇳"),
+    "92": ("Pakistan", "🇵🇰"),
+    "93": ("Afghanistan", "🇦🇫"),
+    "94": ("Sri Lanka", "🇱🇰"),
+    "95": ("Myanmar", "🇲🇲"),
+    "98": ("Iran", "🇮🇷"),
+    "211": ("South Sudan", "🇸🇸"),
+    "212": ("Morocco", "🇲🇦"),
+    "213": ("Algeria", "🇩🇿"),
+    "216": ("Tunisia", "🇹🇳"),
+    "218": ("Libya", "🇱🇾"),
+    "220": ("Gambia", "🇬🇲"),
+    "221": ("Senegal", "🇸🇳"),
+    "222": ("Mauritania", "🇲🇷"),
+    "223": ("Mali", "🇲🇱"),
+    "224": ("Guinea", "🇬🇳"),
+    "225": ("Ivory Coast", "🇨🇮"),
+    "226": ("Burkina Faso", "🇧🇫"),
+    "227": ("Niger", "🇳🇪"),
+    "228": ("Togo", "🇹🇬"),
+    "229": ("Benin", "🇧🇯"),
+    "230": ("Mauritius", "🇲🇺"),
+    "231": ("Liberia", "🇱🇷"),
+    "232": ("Sierra Leone", "🇸🇱"),
+    "233": ("Ghana", "🇬🇭"),
+    "234": ("Nigeria", "🇳🇬"),
+    "235": ("Chad", "🇹🇩"),
+    "236": ("Central African Republic", "🇨🇫"),
+    "237": ("Cameroon", "🇨🇲"),
+    "238": ("Cape Verde", "🇨🇻"),
+    "239": ("Sao Tome and Principe", "🇸🇹"),
+    "240": ("Equatorial Guinea", "🇬🇶"),
+    "241": ("Gabon", "🇬🇦"),
+    "242": ("Congo", "🇨🇬"),
+    "243": ("DR Congo", "🇨🇩"),
+    "244": ("Angola", "🇦🇴"),
+    "248": ("Seychelles", "🇸🇨"),
+    "249": ("Sudan", "🇸🇩"),
+    "250": ("Rwanda", "🇷🇼"),
+    "251": ("Ethiopia", "🇪🇹"),
+    "252": ("Somalia", "🇸🇴"),
+    "253": ("Djibouti", "🇩🇯"),
+    "254": ("Kenya", "🇰🇪"),
+    "255": ("Tanzania", "🇹🇿"),
+    "256": ("Uganda", "🇺🇬"),
+    "257": ("Burundi", "🇧🇮"),
+    "258": ("Mozambique", "🇲🇿"),
+    "260": ("Zambia", "🇿🇲"),
+    "261": ("Madagascar", "🇲🇬"),
+    "262": ("Reunion", "🇷🇪"),
+    "263": ("Zimbabwe", "🇿🇼"),
+    "264": ("Namibia", "🇳🇦"),
+    "265": ("Malawi", "🇲🇼"),
+    "266": ("Lesotho", "🇱🇸"),
+    "267": ("Botswana", "🇧🇼"),
+    "268": ("Eswatini", "🇸🇿"),
+    "269": ("Comoros", "🇰🇲"),
+    "290": ("Saint Helena", "🇸🇭"),
+    "291": ("Eritrea", "🇪🇷"),
+    "297": ("Aruba", "🇦🇼"),
+    "298": ("Faroe Islands", "🇫🇴"),
+    "299": ("Greenland", "🇬🇱"),
+    "350": ("Gibraltar", "🇬🇮"),
+    "351": ("Portugal", "🇵🇹"),
+    "352": ("Luxembourg", "🇱🇺"),
+    "353": ("Ireland", "🇮🇪"),
+    "354": ("Iceland", "🇮🇸"),
+    "355": ("Albania", "🇦🇱"),
+    "356": ("Malta", "🇲🇹"),
+    "357": ("Cyprus", "🇨🇾"),
+    "358": ("Finland", "🇫🇮"),
+    "359": ("Bulgaria", "🇧🇬"),
+    "370": ("Lithuania", "🇱🇹"),
+    "371": ("Latvia", "🇱🇻"),
+    "372": ("Estonia", "🇪🇪"),
+    "373": ("Moldova", "🇲🇩"),
+    "374": ("Armenia", "🇦🇲"),
+    "375": ("Belarus", "🇧🇾"),
+    "376": ("Andorra", "🇦🇩"),
+    "377": ("Monaco", "🇲🇨"),
+    "378": ("San Marino", "🇸🇲"),
+    "380": ("Ukraine", "🇺🇦"),
+    "381": ("Serbia", "🇷🇸"),
+    "382": ("Montenegro", "🇲🇪"),
+    "383": ("Kosovo", "🇽🇰"),
+    "385": ("Croatia", "🇭🇷"),
+    "386": ("Slovenia", "🇸🇮"),
+    "387": ("Bosnia and Herzegovina", "🇧🇦"),
+    "389": ("North Macedonia", "🇲🇰"),
+    "420": ("Czech Republic", "🇨🇿"),
+    "421": ("Slovakia", "🇸🇰"),
+    "423": ("Liechtenstein", "🇱🇮"),
+    "500": ("Falkland Islands", "🇫🇰"),
+    "501": ("Belize", "🇧🇿"),
+    "502": ("Guatemala", "🇬🇹"),
+    "503": ("El Salvador", "🇸🇻"),
+    "504": ("Honduras", "🇭🇳"),
+    "505": ("Nicaragua", "🇳🇮"),
+    "506": ("Costa Rica", "🇨🇷"),
+    "507": ("Panama", "🇵🇦"),
+    "509": ("Haiti", "🇭🇹"),
+    "590": ("Guadeloupe", "🇬🇵"),
+    "591": ("Bolivia", "🇧🇴"),
+    "592": ("Guyana", "🇬🇾"),
+    "593": ("Ecuador", "🇪🇨"),
+    "594": ("French Guiana", "🇬🇫"),
+    "595": ("Paraguay", "🇵🇾"),
+    "596": ("Martinique", "🇲🇶"),
+    "597": ("Suriname", "🇸🇷"),
+    "598": ("Uruguay", "🇺🇾"),
+    "670": ("Timor-Leste", "🇹🇱"),
+    "673": ("Brunei", "🇧🇳"),
+    "674": ("Nauru", "🇳🇷"),
+    "675": ("Papua New Guinea", "🇵🇬"),
+    "676": ("Tonga", "🇹🇴"),
+    "677": ("Solomon Islands", "🇸🇧"),
+    "678": ("Vanuatu", "🇻🇺"),
+    "679": ("Fiji", "🇫🇯"),
+    "680": ("Palau", "🇵🇼"),
+    "681": ("Wallis and Futuna", "🇼🇫"),
+    "682": ("Cook Islands", "🇨🇰"),
+    "685": ("Samoa", "🇼🇸"),
+    "686": ("Kiribati", "🇰🇮"),
+    "687": ("New Caledonia", "🇳🇨"),
+    "688": ("Tuvalu", "🇹🇻"),
+    "689": ("French Polynesia", "🇵🇫"),
+    "691": ("Micronesia", "🇫🇲"),
+    "692": ("Marshall Islands", "🇲🇭"),
+    "850": ("North Korea", "🇰🇵"),
+    "852": ("Hong Kong", "🇭🇰"),
+    "853": ("Macau", "🇲🇴"),
+    "855": ("Cambodia", "🇰🇭"),
+    "856": ("Laos", "🇱🇦"),
+    "880": ("Bangladesh", "🇧🇩"),
+    "886": ("Taiwan", "🇹🇼"),
+    "960": ("Maldives", "🇲🇻"),
+    "961": ("Lebanon", "🇱🇧"),
+    "962": ("Jordan", "🇯🇴"),
+    "963": ("Syria", "🇸🇾"),
+    "964": ("Iraq", "🇮🇶"),
+    "965": ("Kuwait", "🇰🇼"),
+    "966": ("Saudi Arabia", "🇸🇦"),
+    "967": ("Yemen", "🇾🇪"),
+    "968": ("Oman", "🇴🇲"),
+    "971": ("UAE", "🇦🇪"),
+    "973": ("Bahrain", "🇧🇭"),
+    "974": ("Qatar", "🇶🇦"),
+    "975": ("Bhutan", "🇧🇹"),
+    "976": ("Mongolia", "🇲🇳"),
+    "977": ("Nepal", "🇳🇵"),
+    "992": ("Tajikistan", "🇹🇯"),
+    "993": ("Turkmenistan", "🇹🇲"),
+    "994": ("Azerbaijan", "🇦🇿"),
+    "995": ("Georgia", "🇬🇪"),
+    "996": ("Kyrgyzstan", "🇰🇬"),
+    "998": ("Uzbekistan", "🇺🇿"),
+}
 
-users.setdefault(uid, {"index": 0})  
+# ---------------- LOOP ----------------
 
-kb = [[InlineKeyboardButton(ch, url=f"https://t.me/{ch[1:]}")] for ch in CHANNELS]  
-kb.append([InlineKeyboardButton("✅ چیک", callback_data="check")])  
+last_seen_time = None
+print("✅ BOT RUNNING...")
 
-update.message.reply_text("🔒 چینلونو کې ګډون وکړئ:", reply_markup=InlineKeyboardMarkup(kb))
+while True:
+    entries = fetch_sms()
 
-================= CHECK =================
+    if not entries:
+        time.sleep(40)
+        continue
 
-def check(update, context):
-q = update.callback_query
-uid = q.from_user.id
+    new_entries = []
 
-if is_joined(context.bot, uid):  
-    kb = [  
-        [InlineKeyboardButton("📱 نمبرونه", callback_data="numbers")],  
-        [InlineKeyboardButton("👥 ګروف اضافه کول", callback_data="addg")]  
-    ]  
-    q.edit_message_text("✅ ښه راغلاست:", reply_markup=InlineKeyboardMarkup(kb))  
-else:  
-    q.answer("❌ Join وکړئ!", show_alert=True)
+    if last_seen_time is None:
+        new_entries = entries[:5]
+        if new_entries:
+            last_seen_time = parse_time(new_entries[0][3])
+    else:
+        for e in entries:
+            t = parse_time(e[3])
+            if t and t > last_seen_time:
+                new_entries.append(e)
 
-================= NUMBER MENU =================
+    for entry in new_entries[::-1]:
+        app, phone, msg, t = entry
 
-def numbers(update, context):
-q = update.callback_query
-uid = q.from_user.id
+        clean = phone.replace("+", "")
+        code = ""
 
-if len(referrals.get(uid, [])) < 10:  
-    q.answer("❗ 10 ریفیرل پکار دی!", show_alert=True)  
-    return  
+        for c in sorted(country_map.keys(), key=len, reverse=True):
+            if clean.startswith(c):
+                code = c
+                break
 
-q.edit_message_text("⏳ انتظار وکړئ... نمبرونه درته راځي")
+        country, flag = country_map.get(code, ("Unknown", "🌍"))
 
-================= ADD GROUP =================
+        otp = "N/A"
+        m = re.search(r'\b(\d{4,8})\b', msg)
+        if m:
+            otp = m.group(1)
 
-def addg(update, context):
-update.callback_query.message.reply_text("ګروپ username راولیږئ:")
-return 1
+        text = f"📩 {app}\n🌍 {country} {flag}\n📱 {phone}\n🔑 OTP: {otp}\n📝 {msg}"
 
-def saveg(update, context):
-uid = update.message.from_user.id
-group = update.message.text
+        try:
+            bot.send_message(chat_id=TELEGRAM_GROUP_ID, text=text)
+            print("Sent:", otp)
+        except Exception as e:
+            print("Error:", e)
 
-try:  
-    m = context.bot.get_chat_member(group, context.bot.id)  
-    if m.status == "administrator":  
-        groups.append(group)  
-
-        if uid in referrals:  
-            referrals[uid] = referrals[uid][10:]  
-
-        update.message.reply_text("✅ ګروپ ثبت شو")  
-    else:  
-        update.message.reply_text("❌ بوت ادمین نه دی")  
-except:  
-    update.message.reply_text("❌ غلط ګروپ")  
-
-return ConversationHandler.END
-
-================= FETCH =================
-
-def fetch():
-try:
-r = requests.get(API_URL, params={"token": API_TOKEN}, timeout=10)
-return r.json() if isinstance(r.json(), list) else []
-except:
-return []
-
-================= FORMAT USER =================
-
-def user_msg(phone, time):
-return f"""╭━━━〔 💬 نـوی نـمـبـر سـیـسـټـم 〕━━━╮
-┃
-┃  🌍 هیواد کوډ ➤ 【 +?? 】
-┃  💀 نمبر ➤ 【 {phone[-6:]} 】
-┃  ☠ مکمل نمبر ➤ 【 {phone} 】
-┃  ⏳ وخت ➤ 【 {time} 】
-┃
-┣━━━━━━━━━━━━━━━━━━━━━━━┫
-┃  ⚡ زر استفاده وکړئ
-┃  🚫 که ناوخته شي، بل څوک به یې واخلي
-╰━━━━━━━━━━━━━━━━━━━━━━━╯"""
-
-================= FORMAT GROUP =================
-
-def group_msg(app, phone, msg, time):
-otp = "N/A"
-m = re.search(r"\d{4,8}", msg)
-if m:
-otp = m.group()
-
-return f"""_______________________________
-
-نوی کود راورسیده 📲
-💠خدمات نوم: {app}
-🌏هیواد: --
-🎭نمبر کوډ: --
-🎫نمبر: {phone}
-🎯وخت: {time}
-OTPکوډ: {otp}
-مکمل پیغام⭐️:
-{msg}
-_______________________________"""
-
-================= MAIN JOB =================
-
-def job(context):
-data = fetch()
-
-for i in data:  
-    app = i[0]  
-    phone = i[1]  
-    msg = i[2]  
-    time = i[3]  
-
-    if phone in sent:  
-        continue  
-
-    sent.add(phone)  
-
-    # USERS  
-    for uid in users:  
-        if len(referrals.get(uid, [])) >= 10:  
-            try:  
-                context.bot.send_message(  
-                    uid,  
-                    user_msg(phone, time),  
-                    reply_markup=InlineKeyboardMarkup([  
-                        [InlineKeyboardButton("🔑 کوډ دلته", url="https://t.me/HematOTP")],  
-                        [InlineKeyboardButton("📢 معلومات", url="https://t.me/ProTech43")]  
-                    ])  
-                )  
-            except:  
-                pass  
-
-    # GROUPS  
-    for g in groups:  
-        try:  
-            context.bot.send_message(  
-                g,  
-                group_msg(app, phone, msg, time),  
-                reply_markup=InlineKeyboardMarkup([  
-                    [InlineKeyboardButton("📢 زموږ چینل", url="https://t.me/ProTech43")],  
-                    [InlineKeyboardButton("📲 نمبرونه", url="https://t.me/HematOtp1VBot")]  
-                ])  
-            )  
-        except:  
-            pass  
-
-    # ADMIN  
-    context.bot.send_message(ADMIN_ID, f"📊 NEW NUMBER\n{phone}")
-
-================= BROADCAST =================
-
-def broadcast(update, context):
-if update.effective_user.id != ADMIN_ID:
-return
-
-text = " ".join(context.args)  
-
-for u in users:  
-    try:  
-        context.bot.send_message(u, text)  
-    except:  
-        pass  
-
-update.message.reply_text("✅ Broadcast Done")
-
-================= ADMIN =================
-
-def admin(update, context):
-if update.effective_user.id != ADMIN_ID:
-return
-
-update.message.reply_text(  
-    f"👑 ADMIN PANEL\nUsers: {len(users)}\nGroups: {len(groups)}\nNumbers: {len(sent)}"  
-)
-
-================= MAIN =================
-
-def main():
-up = Updater(BOT_TOKEN, use_context=True)
-dp = up.dispatcher
-
-conv = ConversationHandler(  
-    entry_points=[CallbackQueryHandler(addg, pattern="addg")],  
-    states={1: [MessageHandler(Filters.text, saveg)]},  
-    fallbacks=[]  
-)  
-
-dp.add_handler(CommandHandler("start", start))  
-dp.add_handler(CommandHandler("admin", admin))  
-dp.add_handler(CommandHandler("broadcast", broadcast))  
-
-dp.add_handler(CallbackQueryHandler(check, pattern="check"))  
-dp.add_handler(CallbackQueryHandler(numbers, pattern="numbers"))  
-dp.add_handler(conv)  
-
-up.job_queue.run_repeating(job, interval=10, first=5)  
-
-up.start_polling()  
-up.idle()
-
-if name == "main":
-main()
+    time.sleep(40) 
