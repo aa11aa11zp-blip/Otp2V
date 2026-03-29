@@ -3,8 +3,8 @@ import re
 from telegram import *
 from telegram.ext import *
 
-# ========= CONFIG =========
-BOT_TOKEN = "8547944263:AAEcZGBWImZyOWCWj9L0qIuKW1BM0OEN9ZM"
+# ================= CONFIG =================
+BOT_TOKEN = "8289437839:AAFAg63ujCDn6ebG_WtjXZySZPQfDJrqBw8"
 API_URL = "http://147.135.212.197/crapi/st/viewstats"
 API_TOKEN = "RFdUREJBUzR9T4dVc49ndmFra1NYV5CIhpGVcnaOYmqHhJZXfYGJSQ=="
 ADMIN_ID = 1316375131
@@ -18,14 +18,17 @@ CHANNELS = [
     "@HematOTP"
 ]
 
-# ========= STORAGE =========
+# ================= STORAGE =================
 users = {}
 referrals = {}
 groups = []
 sent = set()
-used_codes = {}
 
-# ========= JOIN CHECK =========
+# ================= REF COUNT =================
+def get_refs(uid):
+    return len(referrals.get(uid, []))
+
+# ================= JOIN CHECK =================
 def is_joined(bot, uid):
     for ch in CHANNELS:
         try:
@@ -36,117 +39,107 @@ def is_joined(bot, uid):
             return False
     return True
 
-# ========= START =========
+# ================= START =================
 def start(update, context):
     uid = update.effective_user.id
 
+    # referral system
     if context.args:
-        try:
-            ref = int(context.args[0])
-            if ref != uid:
-                referrals.setdefault(ref, [])
-                if uid not in referrals[ref]:
-                    referrals[ref].append(uid)
-        except:
-            pass
+        ref = int(context.args[0])
+        if ref != uid:
+            referrals.setdefault(ref, [])
+            if uid not in referrals[ref]:
+                referrals[ref].append(uid)
 
-    users[uid] = True
+    users.setdefault(uid, {"index": 0})
 
-    buttons = [[InlineKeyboardButton(ch, url=f"https://t.me/{ch[1:]}")] for ch in CHANNELS]
-    buttons.append([InlineKeyboardButton("✅ چیک", callback_data="check")])
+    bot_username = context.bot.username
+    ref_link = f"https://t.me/{bot_username}?start={uid}"
+
+    kb = [[InlineKeyboardButton(ch, url=f"https://t.me/{ch[1:]}")] for ch in CHANNELS]
+    kb.append([InlineKeyboardButton("✅ چیک", callback_data="check")])
 
     update.message.reply_text(
-        "🔒 لطفاً چینلونه Join کړئ:",
-        reply_markup=InlineKeyboardMarkup(buttons)
+        f"🔒 چینلونو کې ګډون وکړئ:\n\n👥 ستاسو ریفیرل: {get_refs(uid)}\n🔗 لینک:\n{ref_link}",
+        reply_markup=InlineKeyboardMarkup(kb)
     )
 
-# ========= MENU =========
-def menu():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📱 نمبرونه", callback_data="numbers")],
-        [InlineKeyboardButton("👥 ګروف اضافه کول", callback_data="addg")],
-        [InlineKeyboardButton("👤 زما حساب", callback_data="account")]
-    ])
-
-# ========= CHECK =========
+# ================= CHECK =================
 def check(update, context):
     q = update.callback_query
     uid = q.from_user.id
 
     if is_joined(context.bot, uid):
-        q.edit_message_text("✅ ښه راغلاست:", reply_markup=menu())
+        kb = [
+            [InlineKeyboardButton("📱 نمبرونه", callback_data="numbers")],
+            [InlineKeyboardButton("👥 ګروف اضافه کول", callback_data="addg")],
+            [InlineKeyboardButton("👤 زما حساب", callback_data="account")]
+        ]
+        q.edit_message_text("✅ ښه راغلاست:", reply_markup=InlineKeyboardMarkup(kb))
     else:
-        q.answer("❌ ټول چینلونه Join کړئ!", show_alert=True)
+        q.answer("❌ Join وکړئ!", show_alert=True)
 
-# ========= ACCOUNT =========
+# ================= ACCOUNT =================
 def account(update, context):
     q = update.callback_query
     uid = q.from_user.id
 
-    count = len(referrals.get(uid, []))
-    link = f"https://t.me/{context.bot.username}?start={uid}"
+    bot_username = context.bot.username
+    ref_link = f"https://t.me/{bot_username}?start={uid}"
 
-    q.edit_message_text(
-        f"👤 حساب\n\n👥 Referral: {count}/10\n\n🔗 لینک:\n{link}",
-        reply_markup=menu()
-    )
+    text = f"""╭━━━〔 👤 زمــا حـسـاب 〕━━━╮
+┃ 🆔 ID: {uid}
+┃ 👥 ریفیرل: {get_refs(uid)} / 10
+┣━━━━━━━━━━━━━━━━━━━━━━━┫
+🔗 لینک:
+{ref_link}
+┣━━━━━━━━━━━━━━━━━━━━━━━┫
+⚡ 10 ریفیرل = نمبر
+╰━━━━━━━━━━━━━━━━━━━━━━━╯"""
 
-# ========= NUMBERS =========
+    q.edit_message_text(text)
+
+# ================= NUMBER MENU =================
 def numbers(update, context):
     q = update.callback_query
     uid = q.from_user.id
 
-    if len(referrals.get(uid, [])) < 10:
-        q.answer("❗ 10 Referral پکار دي!", show_alert=True)
+    if get_refs(uid) < 10:
+        q.answer("❗ 10 ریفیرل پکار دی!", show_alert=True)
         return
 
-    q.edit_message_text("⏳ نمبرونه درته راځي...", reply_markup=menu())
+    q.edit_message_text("⏳ انتظار وکړئ... نمبرونه درته راځي")
 
-# ========= GROUP =========
+# ================= ADD GROUP =================
 def addg(update, context):
-    update.callback_query.message.reply_text("📩 د ګروف username راولیږئ:")
+    update.callback_query.message.reply_text("ګروپ username راولیږئ:")
     return 1
 
 def saveg(update, context):
     uid = update.message.from_user.id
     group = update.message.text
 
-    if len(referrals.get(uid, [])) < 10:
-        update.message.reply_text("❌ 10 Referral نشته!")
+    if get_refs(uid) < 10:
+        update.message.reply_text("❗ 10 ریفیرل پکار دی!")
         return ConversationHandler.END
 
     try:
         m = context.bot.get_chat_member(group, context.bot.id)
         if m.status == "administrator":
             groups.append(group)
-            referrals[uid] = referrals[uid][10:]
-            update.message.reply_text("✅ ګروف ثبت شو (10 Referral کم شول)")
+
+            # deduct referrals
+            referrals[uid] = referrals.get(uid, [])[10:]
+
+            update.message.reply_text("✅ ګروپ ثبت شو")
         else:
-            update.message.reply_text("❌ Bot admin نه دی")
-    except Exception as e:
-        update.message.reply_text(f"ERROR: {e}")
+            update.message.reply_text("❌ بوت ادمین نه دی")
+    except:
+        update.message.reply_text("❌ غلط ګروپ")
 
     return ConversationHandler.END
 
-# ========= GIFT CODE =========
-def gift(update, context):
-    uid = update.message.from_user.id
-    text = update.message.text.strip().upper()
-
-    if text == "NNJJK":
-        if used_codes.get(uid):
-            update.message.reply_text("❌ دا کوډ مخکې کارول شوی!")
-            return
-
-        used_codes[uid] = True
-        referrals.setdefault(uid, [])
-
-        for i in range(20):
-            referrals[uid].append(f"gift_{i}_{uid}")
-
-        update.message.reply_text("🎁 20 Referral درته اضافه شول ✅")
-
-# ========= FETCH =========
+# ================= FETCH =================
 def fetch():
     try:
         r = requests.get(API_URL, params={"token": API_TOKEN}, timeout=10)
@@ -154,40 +147,35 @@ def fetch():
     except:
         return []
 
-# ========= USER MSG =========
+# ================= FORMAT USER =================
 def user_msg(phone, time):
-    return f"""╭━━━〔 💬 نوی نمبر سیستم 〕━━━╮
+    return f"""╭━━━〔 💬 نـوی نـمـبـر 〕━━━╮
+┃ 🌍 کوډ ➤ +??
 ┃ 💀 نمبر ➤ {phone[-6:]}
 ┃ ☠ مکمل ➤ {phone}
 ┃ ⏳ وخت ➤ {time}
-╰━━━━━━━━━━━━━━━━━━━━━━━╯"""
+╰━━━━━━━━━━━━━━━━━━╯"""
 
-# ========= GROUP MSG =========
+# ================= FORMAT GROUP =================
 def group_msg(app, phone, msg, time):
     otp = "N/A"
     m = re.search(r"\d{4,8}", msg)
     if m:
         otp = m.group()
 
-    return f"""📲 OTP NEW
-
-Service: {app}
+    return f"""📲 OTP راغی
+App: {app}
 Number: {phone}
 Time: {time}
-OTP: {otp}
+Code: {otp}
+Msg: {msg}"""
 
-{msg}
-"""
-
-# ========= JOB =========
+# ================= MAIN JOB =================
 def job(context):
     data = fetch()
 
     for i in data:
-        try:
-            app, phone, msg, time = i
-        except:
-            continue
+        app, phone, msg, time = i
 
         if phone in sent:
             continue
@@ -196,31 +184,27 @@ def job(context):
 
         # USERS
         for uid in users:
-            ref = len(referrals.get(uid, []))
+            if get_refs(uid) >= 10:
+                try:
+                    context.bot.send_message(uid, user_msg(phone, time))
 
-            if ref < 10:
-                context.bot.send_message(uid, "📢 نوی نمبر راغی خو شرط نشته")
-                continue
+                    # deduct referrals after sending
+                    referrals[uid] = referrals.get(uid, [])[10:]
 
-            context.bot.send_message(uid, user_msg(phone, time))
+                except:
+                    pass
 
         # GROUPS
         for g in groups:
-            context.bot.send_message(g, group_msg(app, phone, msg, time))
+            try:
+                context.bot.send_message(g, group_msg(app, phone, msg, time))
+            except:
+                pass
 
         # ADMIN
-        context.bot.send_message(ADMIN_ID, f"📊 NEW NUMBER: {phone}")
+        context.bot.send_message(ADMIN_ID, f"📊 NEW NUMBER\n{phone}")
 
-# ========= ADMIN =========
-def admin(update, context):
-    if update.effective_user.id != ADMIN_ID:
-        return
-
-    update.message.reply_text(
-        f"👑 ADMIN PANEL\nUsers: {len(users)}\nGroups: {len(groups)}"
-    )
-
-# ========= MAIN =========
+# ================= MAIN =================
 def main():
     up = Updater(BOT_TOKEN, use_context=True)
     dp = up.dispatcher
@@ -232,13 +216,9 @@ def main():
     )
 
     dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("admin", admin))
-
     dp.add_handler(CallbackQueryHandler(check, pattern="check"))
     dp.add_handler(CallbackQueryHandler(numbers, pattern="numbers"))
     dp.add_handler(CallbackQueryHandler(account, pattern="account"))
-
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, gift))
     dp.add_handler(conv)
 
     up.job_queue.run_repeating(job, interval=10, first=5)
